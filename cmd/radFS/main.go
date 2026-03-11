@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -11,40 +13,57 @@ import (
 	radFS "github.com/acmpesuecc/radFS/internal/fs"
 )
 
+type config struct {
+	debug bool
+	mount string
+}
+
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Invalid usage. Use go run main.go <mntpoint>")
+	debug := flag.Bool("d", false, "Enable debug mode")
+	flag.Parse()
+
+	if flag.NArg() < 1 {
+		fmt.Println("usage: go run cmd/radFS/main.go [-d] <mountpoint>")
 		return
 	}
 
-	mount_point := os.Args[1]
+	cfg := &config{
+		debug: *debug,
+		mount: flag.Arg(0),
+	}
 
-	c, err := fuse.Mount(mount_point)
+	if cfg.debug {
+		log.Println("Debug mode enabled")
+	}
+
+	//c is a fuse connection to dev/fuse
+	c, err := fuse.Mount(cfg.mount)
+
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	defer c.Close()
 
 	serv := make(chan error, 1)
 	go func() {
-		serv <- fs.Serve(c, radFS.FS{})
+		serv <- fs.Serve(c, &radFS.FS{Debug: cfg.debug})
 	}()
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 
 	<-signals
-	fmt.Println("Interrupt received: shutting down.")
-	unmount_err := fuse.Unmount(mount_point)
+	log.Println("Interrupt received: shutting down.")
+	unmount_err := fuse.Unmount(cfg.mount)
 
 	if unmount_err != nil {
-		fmt.Println("Lazy Unmounting")
-		command := exec.Command("fusermount", "-u", "-z", mount_point)
+		log.Println("Lazy Unmounting")
+		command := exec.Command("fusermount", "-u", "-z", cfg.mount)
 		cmd_err := command.Run()
 
 		if cmd_err != nil {
-			fmt.Println(cmd_err)
+			log.Println(cmd_err)
 			return
 		}
 
@@ -52,6 +71,6 @@ func main() {
 	}
 
 	if err := <-serv; err != nil {
-		fmt.Println("Serve error:", err)
+		log.Println("Serve error:", err)
 	}
 }

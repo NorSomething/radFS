@@ -7,7 +7,9 @@ import (
 	"bazil.org/fuse/fs"
 )
 
-type FS struct{}
+type FS struct {
+	Debug bool
+}
 
 var inodeCounter uint64 = 2
 
@@ -15,7 +17,7 @@ func nextInode() uint64 {
 	return atomic.AddUint64(&inodeCounter, 1)
 }
 
-func (FS) Root() (fs.Node, error) {
+func (f *FS) Root() (fs.Node, error) {
 	root := &Dir{
 		inode: 1,
 		Nodes: map[string]fs.Node{
@@ -25,6 +27,7 @@ func (FS) Root() (fs.Node, error) {
 				mode:  0o666,
 			},
 		},
+		fs: f,
 	}
 
 	return root, nil
@@ -41,4 +44,5 @@ type Dir struct {
 	mu    sync.Mutex
 	inode uint64
 	Nodes map[string]fs.Node
+	fs    *FS
 }

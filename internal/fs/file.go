@@ -91,7 +91,5 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 }
 
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
-    f.mu.Lock()
-    defer f.mu.Unlock()
     return nil
 }

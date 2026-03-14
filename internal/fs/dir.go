@@ -122,6 +122,13 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		return syscall.ENOENT
 	}
 
+	if dir, flag := d.Nodes[req.Name].(*Dir); flag {
+		if len(dir.Nodes) > 0 {
+			return syscall.ENOTEMPTY
+		}
+	}
+	
+
 	delete(d.Nodes, req.Name)
 
 	return nil

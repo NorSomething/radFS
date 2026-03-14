@@ -89,3 +89,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	return nil
 }
+
+func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
+    return nil
+}

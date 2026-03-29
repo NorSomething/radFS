@@ -18,6 +18,8 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Atime = f.atime
 	a.Mtime = f.mtime
 	a.Ctime = f.ctime
+	a.Uid = f.uid
+	a.Gid = f.gid
 
 	return nil
 }

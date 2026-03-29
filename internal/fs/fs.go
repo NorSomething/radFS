@@ -32,6 +32,9 @@ func (f *FS) Root() (fs.Node, error) {
 			},
 		},
 		fs: f,
+		atime: time.Now(),
+		mtime: time.Now(),
+		ctime: time.Now(),
 	}
 
 	return root, nil
@@ -45,6 +48,8 @@ type File struct {
 	atime time.Time // read
 	mtime time.Time // write | truncate
 	ctime time.Time // metadata (setattr)
+	uid uint32
+	gid uint32
 }
 
 type Dir struct {
@@ -52,4 +57,8 @@ type Dir struct {
 	inode uint64
 	Nodes map[string]fs.Node
 	fs    *FS
+	atime time.Time
+	mtime time.Time
+	ctime time.Time
+
 }

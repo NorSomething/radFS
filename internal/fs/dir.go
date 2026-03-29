@@ -21,8 +21,36 @@ func (f *FS) DebugPrint(msg string, v ...any) {
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = d.inode
 	a.Mode = os.ModeDir | 0o755
+	a.Atime = d.atime
+	a.Mtime = d.mtime
+	a.Ctime = d.ctime
 
 	return nil
+}
+
+func (d *Dir) Setattr(ctx context,Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	f.mu.Lock()
+	defer d.mu.Unlock()
+
+	if req.Valid.Atime() {
+		d.atime = req.Atime
+	}
+	if req.Valid.A=Mtime() {
+		d.mtime = req.Mtime
+	}
+	if req.Valid.Ctime() {
+		d.ctime = req.Ctime
+	}
+
+	resp.Attr.Inode = d.inode
+	resp.Attr.Mode = os.ModeDir | 0o755
+
+	resp.Attr.Atime = d.atime
+	resp.Attr.Mtime = d.mtime
+	resp.Attr.Ctime = d.Ctime
+
+	return nil
+
 }
 
 func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
@@ -36,6 +64,8 @@ func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	if !ok {
 		return nil, syscall.ENOENT
 	}
+
+	d.atime = time.Now()
 
 	return node, nil
 }
@@ -60,6 +90,8 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		entries = append(entries, fuse.Dirent{Name: name, Type: dt})
 	}
 
+	d.atime = time.Now()
+
 	return entries, nil
 }
 
@@ -80,8 +112,18 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		return nil, syscall.EEXIST
 	}
 
-	newDir := &Dir{inode: nextInode(), Nodes: make(map[string]fs.Node), fs: d.fs}
+	newDir := &Dir{
+		inode: nextInode(),
+		Nodes: make(map[string]fs.Node),
+		fs: d.fs,
+		atime = time.Now(),
+		ctime = time.Now(),
+		mtime = time.Now()
+	}
 	d.Nodes[req.Name] = newDir
+
+	d.mtime = time.Now()
+	d.ctime = time.Now()
 
 	return newDir, nil
 }
@@ -109,6 +151,9 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		mtime: time.Now(),
 	}
 	d.Nodes[req.Name] = f
+
+	d.mtime = time.Now()
+	d.ctime = time.Now()
 
 	return f, f, nil
 }
@@ -138,6 +183,9 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	
 
 	delete(d.Nodes, req.Name)
+
+	d.mtime = time.Now()
+	d.ctime = time.Now()
 
 	return nil
 }

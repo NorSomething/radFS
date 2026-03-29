@@ -28,18 +28,15 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-func (d *Dir) Setattr(ctx context,Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
-	f.mu.Lock()
+func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
+	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if req.Valid.Atime() {
 		d.atime = req.Atime
 	}
-	if req.Valid.A=Mtime() {
+	if req.Valid.Mtime() {
 		d.mtime = req.Mtime
-	}
-	if req.Valid.Ctime() {
-		d.ctime = req.Ctime
 	}
 
 	resp.Attr.Inode = d.inode
@@ -47,7 +44,7 @@ func (d *Dir) Setattr(ctx context,Context, req *fuse.SetattrRequest, resp *fuse.
 
 	resp.Attr.Atime = d.atime
 	resp.Attr.Mtime = d.mtime
-	resp.Attr.Ctime = d.Ctime
+	resp.Attr.Ctime = d.ctime
 
 	return nil
 
@@ -115,10 +112,10 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	newDir := &Dir{
 		inode: nextInode(),
 		Nodes: make(map[string]fs.Node),
-		fs: d.fs,
-		atime = time.Now(),
-		ctime = time.Now(),
-		mtime = time.Now()
+		fs:    d.fs,
+		atime: time.Now(),
+		ctime: time.Now(),
+		mtime: time.Now(),
 	}
 	d.Nodes[req.Name] = newDir
 
@@ -144,11 +141,15 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	f := &File{
 		inode: nextInode(),
-		data: []byte{},
-		mode: uint32(req.Mode),
+		data:  []byte{},
+		mode:  uint32(req.Mode),
 		atime: time.Now(),
 		ctime: time.Now(),
 		mtime: time.Now(),
+	}
+
+	if _, exists := d.Nodes[req.Name]; exists { // checking for dupes
+		return nil, nil, syscall.EEXIST
 	}
 	d.Nodes[req.Name] = f
 
@@ -180,7 +181,6 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 			return syscall.ENOTEMPTY
 		}
 	}
-	
 
 	delete(d.Nodes, req.Name)
 

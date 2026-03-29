@@ -77,24 +77,27 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	if req.Valid.Mode() {
 		f.mode = uint32(req.Mode)
-		f.ctime = time.Now() // valid ctime done here
+		f.ctime = time.Now()
 	}
 
 	if req.Valid.Size() {
 		if req.Size < uint64(len(f.data)) {
 			f.data = f.data[:req.Size]
+			f.ctime = time.Now() // cuz creating file here
 		} else {
 			newData := make([]byte, req.Size)
 			copy(newData, f.data)
 			f.data = newData
 		}
+		f.mtime = time.Now()
+		f.ctime = time.Now()
 	}
 
 	if req.Valid.Atime() {
 		f.atime = req.Atime
 	}
 	if req.Valid.Mtime() {
-		f.mtime = req.Mtime 
+		f.mtime = req.Mtime
 	}
 
 	resp.Attr.Inode = f.inode
@@ -113,5 +116,5 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 }
 
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
-    return nil
+	return nil
 }

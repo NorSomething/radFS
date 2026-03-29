@@ -31,7 +31,7 @@ func (f *FS) Root() (fs.Node, error) {
 				ctime: time.Now(),
 			},
 		},
-		fs: f,
+		fs:    f,
 		atime: time.Now(),
 		mtime: time.Now(),
 		ctime: time.Now(),
@@ -48,8 +48,8 @@ type File struct {
 	atime time.Time // read
 	mtime time.Time // write | truncate
 	ctime time.Time // metadata (setattr)
-	uid uint32
-	gid uint32
+	uid   uint32
+	gid   uint32
 }
 
 type Dir struct {
@@ -60,5 +60,4 @@ type Dir struct {
 	atime time.Time
 	mtime time.Time
 	ctime time.Time
-
 }

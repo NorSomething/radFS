@@ -3,6 +3,7 @@ package fs
 import (
 	"context"
 	"os"
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -14,6 +15,9 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = f.inode
 	a.Mode = os.FileMode(f.mode)
 	a.Size = uint64(len(f.data))
+	a.Atime = f.atime
+	a.Mtime = f.mtime
+	a.Ctime = f.ctime
 
 	return nil
 }
@@ -36,6 +40,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	end = min(end, int64(len(f.data)))
 	resp.Data = f.data[req.Offset:end]
 
+	f.atime = time.Now()
+
 	return nil
 }
 
@@ -56,6 +62,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	copy(f.data[req.Offset:], req.Data)
 	resp.Size = len(req.Data)
 
+	f.mtime = time.Now()
+	f.ctime = time.Now() // writing to file constitutes changes in certain fields of inode too
+
 	return nil
 }
 
@@ -66,6 +75,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	if req.Valid.Mode() {
 		f.mode = uint32(req.Mode)
+		f.ctime = time.Now() // valid ctime done here
 	}
 
 	if req.Valid.Size() {
@@ -78,9 +88,19 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		}
 	}
 
+	if req.Valid.Atime() {
+		f.atime = req.Atime
+	}
+	if req.Valid.Mtime() {
+		f.mtime = req.Mtime 
+	}
+
 	resp.Attr.Inode = f.inode
 	resp.Attr.Mode = os.FileMode(f.mode)
 	resp.Attr.Size = uint64(len(f.data))
+	resp.Attr.Atime = f.atime
+	resp.Attr.Mtime = f.mtime
+	resp.Attr.Ctime = f.ctime
 
 	return nil
 }

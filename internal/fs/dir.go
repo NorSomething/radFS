@@ -38,6 +38,7 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	if req.Valid.Mtime() {
 		d.mtime = req.Mtime
 	}
+	d.ctime = time.Now()
 
 	resp.Attr.Inode = d.inode
 	resp.Attr.Mode = os.ModeDir | 0o755

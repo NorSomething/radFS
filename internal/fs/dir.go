@@ -24,6 +24,8 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Atime = d.atime
 	a.Mtime = d.mtime
 	a.Ctime = d.ctime
+	a.Uid = d.uid
+	a.Gid = d.gid
 
 	return nil
 }
@@ -31,6 +33,11 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	if req.Valid.Uid() {
+		d.uid = req.Uid
+		d.ctime = time.Now()
+	}
 
 	if req.Valid.Atime() {
 		d.atime = req.Atime
@@ -46,6 +53,8 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	resp.Attr.Atime = d.atime
 	resp.Attr.Mtime = d.mtime
 	resp.Attr.Ctime = d.ctime
+	resp.Attr.Uid = d.uid
+	resp.Attr.Gid = d.gid
 
 	return nil
 
@@ -141,12 +150,13 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	defer d.mu.Unlock()
 
 	f := &File{
-		inode: nextInode(),
-		data:  []byte{},
-		mode:  uint32(req.Mode),
-		atime: time.Now(),
-		ctime: time.Now(),
-		mtime: time.Now(),
+		inode:  nextInode(),
+		blocks: [][]byte{},
+		size:   0,
+		mode:   uint32(req.Mode),
+		atime:  time.Now(),
+		ctime:  time.Now(),
+		mtime:  time.Now(),
 	}
 
 	if _, exists := d.Nodes[req.Name]; exists { // checking for dupes

@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -11,6 +12,10 @@ type FS struct {
 	Debug bool
 }
 
+func New(debug bool) *FS {
+	return &FS{Debug: debug}
+}
+
 var inodeCounter uint64 = 2
 
 func nextInode() uint64 {
@@ -18,19 +23,17 @@ func nextInode() uint64 {
 }
 
 func (f *FS) Root() (fs.Node, error) {
-	root := &Dir{
+	return &Dir{
 		inode: 1,
 		Nodes: map[string]fs.Node{
 			"hello.txt": &File{
 				inode: nextInode(),
 				data:  []byte("Hello from radFS!\n"),
-				mode:  0o666,
+				mode:  uint32(os.FileMode(0o666)),
 			},
 		},
 		fs: f,
-	}
-
-	return root, nil
+	}, nil
 }
 
 type File struct {

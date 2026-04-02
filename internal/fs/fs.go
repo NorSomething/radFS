@@ -50,6 +50,8 @@ func (f *FS) Root() (fs.Node, error) {
 		atime: time.Now(),
 		mtime: time.Now(),
 		ctime: time.Now(),
+		uid:    uint32(os.Getuid()),
+		gid:    uint32(os.Getgid()),
 	}
 
 	return root, nil

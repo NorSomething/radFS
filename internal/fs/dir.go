@@ -35,6 +35,12 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	defer d.mu.Unlock()
 
 	if req.Valid.Uid() {
+
+		//if caller is not root and caller is trying to chown to uid that is not itself
+		if req.Header.Uid != 0 && req.Uid != req.Header.Uid { // to get the uid of the process making the req -> checking the caller
+			return syscall.EPERM
+		}
+
 		d.uid = req.Uid
 		d.ctime = time.Now()
 	}
@@ -126,6 +132,8 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		atime: time.Now(),
 		ctime: time.Now(),
 		mtime: time.Now(),
+		uid: req.Uid,
+		gid: req.Gid,
 	}
 	d.Nodes[req.Name] = newDir
 
@@ -157,6 +165,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		atime:  time.Now(),
 		ctime:  time.Now(),
 		mtime:  time.Now(),
+		uid: req.Uid,
+		gid: req.Gid,
 	}
 
 	if _, exists := d.Nodes[req.Name]; exists { // checking for dupes

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"time"
+	"syscall"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -120,6 +121,12 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if req.Valid.Uid() {
+
+		//if caller is not root and caller is trying to chown to uid that is not itself
+		if req.Header.Uid != 0 && req.Uid != req.Header.Uid{ // to get the uid of the process making the req -> checking the caller
+			return syscall.EPERM
+		}
+
 		f.uid = req.Uid
 		f.ctime = time.Now()
 	}
@@ -131,27 +138,27 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 
 	if req.Valid.Size() { // mainly for truncate?
 
-		new_size := req.Size
-		needed := (new_size + uint64(blockSize) - 1) / uint64(blockSize) // ceil division to find how many blocks are required to store the new size
+		newSize := req.Size
+		needed := (newSize + uint64(blockSize) - 1) / uint64(blockSize) // ceil division to find how many blocks are required to store the new size
 
-		if new_size < f.size { //shrinking operation
+		if newSize < f.size { //shrinking operation
 
 			//start from where we need to start
 			f.blocks = f.blocks[:needed]
 
-			if new_size > 0 {
-				last_offset := new_size % uint64(blockSize)
+			if newSize > 0 {
+				last_offset := newSize % uint64(blockSize)
 				if last_offset != 0 {
 					clear(f.blocks[needed-1][last_offset:]) // since we are shirnking/truncating we need to remove(clear) the stuff we dont need
 				}
 			}
-		} else if new_size > f.size { // explanding operation
+		} else if newSize > f.size { // explanding operation
 			for uint64(len(f.blocks)) < needed {
 				f.blocks = append(f.blocks, make([]byte, blockSize))
 			}
 		}
 
-		f.size = new_size
+		f.size = newSize
 		f.mtime = time.Now()
 		f.ctime = time.Now()
 

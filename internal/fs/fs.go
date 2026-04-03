@@ -3,6 +3,7 @@ package fs
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"bazil.org/fuse/fs"
 )
@@ -25,9 +26,15 @@ func (f *FS) Root() (fs.Node, error) {
 				inode: nextInode(),
 				data:  []byte("Hello from radFS!\n"),
 				mode:  0o666,
+				atime: time.Now(),
+				mtime: time.Now(),
+				ctime: time.Now(),
 			},
 		},
-		fs: f,
+		fs:    f,
+		atime: time.Now(),
+		mtime: time.Now(),
+		ctime: time.Now(),
 	}
 
 	return root, nil
@@ -38,6 +45,11 @@ type File struct {
 	inode uint64
 	data  []byte
 	mode  uint32
+	atime time.Time // read
+	mtime time.Time // write | truncate
+	ctime time.Time // metadata (setattr)
+	uid   uint32
+	gid   uint32
 }
 
 type Dir struct {
@@ -45,4 +57,7 @@ type Dir struct {
 	inode uint64
 	Nodes map[string]fs.Node
 	fs    *FS
+	atime time.Time
+	mtime time.Time
+	ctime time.Time
 }

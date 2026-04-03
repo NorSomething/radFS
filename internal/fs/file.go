@@ -65,6 +65,8 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	resp.Data = result
 	f.atime = time.Now()
 
+	f.atime = time.Now()
+
 	return nil
 }
 
@@ -104,6 +106,9 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	resp.Size = written
+	f.mtime = time.Now()
+	f.ctime = time.Now() // writing to file constitutes changes in certain fields of inode too
+
 	f.mtime = time.Now()
 	f.ctime = time.Now() // writing to file constitutes changes in certain fields of inode too
 

@@ -13,6 +13,10 @@ type FS struct {
 	Debug bool
 }
 
+func New(debug bool) *FS {
+	return &FS{Debug: debug}
+}
+
 var inodeCounter uint64 = 2
 
 func nextInode() uint64 {

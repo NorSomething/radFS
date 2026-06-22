@@ -210,3 +210,59 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 
 	return nil
 }
+
+func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
+	d.fs.DebugPrint(
+		"RENAME",
+		"from", req.OldName,
+		"to", req.NewName,
+	)
+
+	newParent, ok := newDir.(*Dir)
+	if !ok {
+		return syscall.EINVAL
+	}
+
+	//same name in same dir so do nothing
+	if d == newParent && req.OldName == req.NewName {
+		return nil
+	}
+
+	//safe locking
+	if d == newParent {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+	} else {
+		d.mu.Lock()
+		newParent.mu.Lock()
+		defer d.mu.Unlock()
+		defer newParent.mu.Unlock()
+	}
+
+	//checks if source exists
+	node, exists := d.Nodes[req.OldName]
+	if !exists {
+		return syscall.ENOENT
+	}
+
+	
+	// if destination exists → overwrite 
+if existing, exists := newParent.Nodes[req.NewName]; exists {
+    // if it's a directory, check if empty
+    if dir, ok := existing.(*Dir); ok {
+        if len(dir.Nodes) > 0 {
+            return syscall.ENOTEMPTY
+        }
+    }
+    delete(newParent.Nodes, req.NewName)
+}
+
+	//removes from old
+	delete(d.Nodes, req.OldName)
+
+	//adds to new
+	newParent.Nodes[req.NewName] = node
+
+	return nil
+}
+

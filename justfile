@@ -39,4 +39,11 @@ unmount mnt:
 check:
     go fmt ./...
     go vet ./...
+
+# Run all tests
+test:
+    go test -v ./internal/fs/...
+
+# tidy dependencies
+tidy:
     go mod tidy

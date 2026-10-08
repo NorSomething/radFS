@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"bazil.org/fuse/fs"
+	"github.com/acmpesuecc/radFS/internal/art"
 )
 
 type FS struct {
@@ -24,29 +25,39 @@ func nextInode() uint64 {
 }
 
 func (f *FS) Root() (fs.Node, error) {
-	return &Dir{
+	now := time.Now()
+	uid := uint32(os.Getuid())
+	gid := uint32(os.Getgid())
+
+	root := &Dir{
 		inode: 1,
-		Nodes: map[string]fs.Node{
-			"hello.txt": &File{
-				inode: nextInode(),
-				data:  []byte("Hello from radFS!\n"),
-				mode:  0o666,
-				atime: time.Now(),
-				mtime: time.Now(),
-				ctime: time.Now(),
-			},
-		},
+		tree:  art.New(),
 		fs:    f,
-		atime: time.Now(),
-		mtime: time.Now(),
-		ctime: time.Now(),
+		atime: now,
+		mtime: now,
+		ctime: now,
+		uid:   uid,
+		gid:   gid,
 	}
+
+	hello := &File{
+		inode: nextInode(),
+		data:  []byte("Hello from radFS!\n"),
+		mode:  0o666,
+		atime: now,
+		mtime: now,
+		ctime: now,
+		uid:   uid, //permissions implemnet based on userid
+		gid:   gid, //permissions implement based on groupid
+	}
+
+	root.tree.Insert([]byte("hello.txt"), hello)
 
 	return root, nil
 }
 
 type File struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	inode uint64
 	data  []byte
 	mode  uint32
@@ -58,11 +69,13 @@ type File struct {
 }
 
 type Dir struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	inode uint64
-	Nodes map[string]fs.Node
+	tree  *art.Tree
 	fs    *FS
 	atime time.Time
 	mtime time.Time
 	ctime time.Time
+	uid   uint32
+	gid   uint32
 }

@@ -9,6 +9,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"github.com/acmpesuecc/radFS/internal/art"
 )
 
 func (f *FS) DebugPrint(msg string, v ...any) {
@@ -19,11 +20,16 @@ func (f *FS) DebugPrint(msg string, v ...any) {
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	a.Inode = d.inode
 	a.Mode = os.ModeDir | 0o755
 	a.Atime = d.atime
 	a.Mtime = d.mtime
 	a.Ctime = d.ctime
+	a.Uid = d.uid
+	a.Gid = d.gid
 
 	return nil
 }
@@ -35,60 +41,79 @@ func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.
 	if req.Valid.Atime() {
 		d.atime = req.Atime
 	}
+
 	if req.Valid.Mtime() {
 		d.mtime = req.Mtime
 	}
-	d.ctime = time.Now()
+
+	uidChanged := req.Valid.Uid()
+	gidChanged := req.Valid.Gid()
+
+	if uidChanged {
+		d.uid = req.Uid
+	}
+
+	if gidChanged {
+		d.gid = req.Gid
+	}
+
+	if uidChanged || gidChanged {
+		d.ctime = time.Now()
+	}
 
 	resp.Attr.Inode = d.inode
 	resp.Attr.Mode = os.ModeDir | 0o755
-
 	resp.Attr.Atime = d.atime
 	resp.Attr.Mtime = d.mtime
 	resp.Attr.Ctime = d.ctime
+	resp.Attr.Uid = d.uid
+	resp.Attr.Gid = d.gid
 
 	return nil
-
 }
 
 func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	d.fs.DebugPrint("LOOKUP", "fetching", name)
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	node, ok := d.Nodes[name]
+	d.mu.RLock()
+	v, ok := d.tree.Search([]byte(name))
+	d.mu.RUnlock()
 
 	if !ok {
 		return nil, syscall.ENOENT
 	}
 
+	d.mu.Lock()
 	d.atime = time.Now()
+	d.mu.Unlock()
 
-	return node, nil
+	return v.(fs.Node), nil
 }
 
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	d.fs.DebugPrint("READDIR", "inode", d.inode)
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	d.mu.RLock()
 
 	var entries []fuse.Dirent
-	for name, node := range d.Nodes {
-		var dt fuse.DirentType
-
-		switch node.(type) {
+	d.tree.ForEach(func(b []byte, i interface{}) { //traverses tree and appends the dirent to entries
+		name := string(b)
+		var dtype fuse.DirentType
+		switch i.(type) {
+		case *File:
+			dtype = fuse.DT_File
 		case *Dir:
-			dt = fuse.DT_Dir
+			dtype = fuse.DT_Dir
 		default:
-			dt = fuse.DT_File
+			dtype = fuse.DT_File
 		}
+		entries = append(entries, fuse.Dirent{Name: name, Type: dtype})
+	})
+	d.mu.RUnlock()
 
-		entries = append(entries, fuse.Dirent{Name: name, Type: dt})
-	}
-
+	d.mu.Lock()
 	d.atime = time.Now()
+	d.mu.Unlock()
 
 	return entries, nil
 }
@@ -106,22 +131,25 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if _, exists := d.Nodes[req.Name]; exists {
+	if _, exists := d.tree.Search([]byte(req.Name)); exists {
 		return nil, syscall.EEXIST
 	}
 
+	now := time.Now()
 	newDir := &Dir{
 		inode: nextInode(),
-		Nodes: make(map[string]fs.Node),
+		tree:  art.New(),
 		fs:    d.fs,
-		atime: time.Now(),
-		ctime: time.Now(),
-		mtime: time.Now(),
+		atime: now,
+		mtime: now,
+		ctime: now,
+		uid:   req.Uid,
+		gid:   req.Gid,
 	}
-	d.Nodes[req.Name] = newDir
 
-	d.mtime = time.Now()
-	d.ctime = time.Now()
+	d.tree.Insert([]byte(req.Name), newDir)
+	d.mtime = now
+	d.ctime = now
 
 	return newDir, nil
 }
@@ -140,22 +168,25 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	if _, exist := d.tree.Search([]byte(req.Name)); exist {
+		return nil, nil, syscall.EEXIST
+	}
+
+	now := time.Now()
 	f := &File{
 		inode: nextInode(),
 		data:  []byte{},
 		mode:  uint32(req.Mode),
-		atime: time.Now(),
-		ctime: time.Now(),
-		mtime: time.Now(),
+		atime: now,
+		ctime: now,
+		mtime: now,
+		uid:   req.Uid,
+		gid:   req.Gid,
 	}
 
-	if _, exists := d.Nodes[req.Name]; exists { // checking for dupes
-		return nil, nil, syscall.EEXIST
-	}
-	d.Nodes[req.Name] = f
-
-	d.mtime = time.Now()
-	d.ctime = time.Now()
+	d.tree.Insert([]byte(req.Name), f)
+	d.mtime = now
+	d.ctime = now
 
 	return f, f, nil
 }
@@ -173,20 +204,25 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if _, exists := d.Nodes[req.Name]; !exists {
+	v, exist := d.tree.Search([]byte(req.Name))
+
+	if !exist {
 		return syscall.ENOENT
 	}
 
-	if dir, flag := d.Nodes[req.Name].(*Dir); flag {
-		if len(dir.Nodes) > 0 {
+	if dir, ok := v.(*Dir); ok {
+		dir.mu.RLock() // we are reading another dir with Empty() , multiple processes may read
+		defer dir.mu.RUnlock()
+		if !dir.tree.Empty() {
 			return syscall.ENOTEMPTY
 		}
 	}
 
-	delete(d.Nodes, req.Name)
+	d.tree.Delete([]byte(req.Name))
 
-	d.mtime = time.Now()
-	d.ctime = time.Now()
+	now := time.Now()
+	d.mtime = now
+	d.ctime = now
 
 	return nil
 }
@@ -213,36 +249,47 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		d.mu.Lock()
 		defer d.mu.Unlock()
 	} else {
-		d.mu.Lock()
-		newParent.mu.Lock()
-		defer d.mu.Unlock()
-		defer newParent.mu.Unlock()
+		first := d
+		second := newParent
+		if first.inode > second.inode {
+			first, second = second, first
+		}
+		first.mu.Lock()
+		second.mu.Lock()
+
+		defer second.mu.Unlock()
+		defer first.mu.Unlock()
 	}
 
 	//checks if source exists
-	node, exists := d.Nodes[req.OldName]
+	node, exists := d.tree.Search([]byte(req.OldName))
 	if !exists {
 		return syscall.ENOENT
 	}
-
-	
-	// if destination exists → overwrite 
-if existing, exists := newParent.Nodes[req.NewName]; exists {
-    // if it's a directory, check if empty
-    if dir, ok := existing.(*Dir); ok {
-        if len(dir.Nodes) > 0 {
-            return syscall.ENOTEMPTY
-        }
-    }
-    delete(newParent.Nodes, req.NewName)
-}
+	// if destination exists → overwrite
+	if existing, exists := newParent.tree.Search([]byte(req.NewName)); exists {
+		// if it's a directory, check if empty
+		if dir, ok := existing.(*Dir); ok {
+			dir.mu.RLock()
+			defer dir.mu.RUnlock()
+			if !dir.tree.Empty() {
+				return syscall.ENOTEMPTY
+			}
+		}
+		newParent.tree.Delete([]byte(req.NewName))
+	}
 
 	//removes from old
-	delete(d.Nodes, req.OldName)
+	d.tree.Delete([]byte(req.OldName))
 
 	//adds to new
-	newParent.Nodes[req.NewName] = node
+	newParent.tree.Insert([]byte(req.NewName), node)
+
+	now := time.Now()
+	d.mtime = now
+	d.ctime = now
+	newParent.mtime = now
+	newParent.ctime = now
 
 	return nil
 }
-
